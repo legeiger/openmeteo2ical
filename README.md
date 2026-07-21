@@ -10,7 +10,7 @@ Home Assistant AppDaemon app that converts Open-Meteo forecast data into an iCal
 
 ## Install
 ```bash
-pip install openmeteo-requests icalendar
+pip install openmeteo-requests icalendar numpy<2.4.0
 ```
 
 ## Configure
