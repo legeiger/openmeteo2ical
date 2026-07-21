@@ -12,7 +12,7 @@ import openmeteo2ical  # noqa: E402
 
 
 class OpenMeteo2ICalTests(unittest.TestCase):
-    def test_build_calendar_is_parseable_and_contains_visibility(self) -> None:
+    def test_build_calendar_is_parseable_and_uses_compact_weather_layout(self) -> None:
         forecast = {
             "latitude": 48.7424,
             "longitude": 9.10785,
@@ -26,6 +26,8 @@ class OpenMeteo2ICalTests(unittest.TestCase):
                     "weather_code": 0,
                     "temp_min": 10,
                     "temp_max": 22,
+                    "apparent_temp_min": 8,
+                    "apparent_temp_max": 20,
                     "sunrise_local": "05:40",
                     "sunset_local": "21:15",
                     "daylight_h": 15.6,
@@ -65,8 +67,10 @@ class OpenMeteo2ICalTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         description = str(events[0].get("description"))
         self.assertIn("👀9.0km", description)
+        self.assertIn("☀️ Clear sky | 10°C/22°C | Feels 8°C/20°C", description)
         self.assertIn("Forecast by Open-Meteo", description)
-        self.assertLess(description.index("0h -  3h"), description.index("🌅 Sunrise"))
+        self.assertLess(description.index("🌅 05:40"), description.index(" 0h- 3h"))
+        self.assertNotIn("🧭", description)
 
 
 if __name__ == "__main__":
