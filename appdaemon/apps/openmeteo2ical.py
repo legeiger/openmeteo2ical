@@ -36,6 +36,8 @@ DAILY_VARIABLES = [
     "weather_code",
     "temperature_2m_max",
     "temperature_2m_min",
+    "apparent_temperature_max",
+    "apparent_temperature_min",
     "sunrise",
     "sunset",
     "daylight_duration",
@@ -76,6 +78,37 @@ WEATHER_EMOJI = {
     99: "⛈",
 }
 
+WEATHER_TEXT = {
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Depositing rime fog",
+    51: "Light drizzle",
+    53: "Moderate drizzle",
+    55: "Dense drizzle",
+    56: "Light freezing drizzle",
+    57: "Dense freezing drizzle",
+    61: "Slight rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    66: "Light freezing rain",
+    67: "Heavy freezing rain",
+    71: "Slight snow fall",
+    73: "Moderate snow fall",
+    75: "Heavy snow fall",
+    77: "Snow grains",
+    80: "Slight rain showers",
+    81: "Moderate rain showers",
+    82: "Violent rain showers",
+    85: "Slight snow showers",
+    86: "Heavy snow showers",
+    95: "Thunderstorm",
+    96: "Thunderstorm with slight hail",
+    99: "Thunderstorm with heavy hail",
+}
+
 
 def to_text(value: Any) -> str:
     if isinstance(value, bytes):
@@ -93,6 +126,10 @@ def to_int(value: Any) -> int:
 
 def weather_emoji(code: Any) -> str:
     return WEATHER_EMOJI.get(to_int(code), "❓")
+
+
+def weather_text(code: Any) -> str:
+    return WEATHER_TEXT.get(to_int(code), "Unknown")
 
 
 def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url: str) -> str:
@@ -116,26 +153,32 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
         for chunk in day["three_hour_chunks"]:
             aggregate_lines.append(
                 (
-                    f"{chunk['start_h']:>2}h - {chunk['end_h']:>2}h: "
+                    f"{chunk['start_h']:>2}h-{chunk['end_h']:>2}h: "
                     f"{weather_emoji(chunk['weather_code'])} "
-                    f"🌡{round(to_float(chunk['temperature']))}°C "
-                    f"🤗{round(to_float(chunk['apparent_temperature']))}°C "
+                    f"{round(to_float(chunk['temperature']))}°C "
                     f"💧{round(to_float(chunk['humidity']))}% "
                     f"☔{round(to_float(chunk['precip_probability']))}% "
                     f"🌧{to_float(chunk['precipitation']):.1f}mm "
                     f"💨{round(to_float(chunk['wind_speed']))}km/h "
-                    f"🧭{round(to_float(chunk['wind_direction']))}° "
                     f"👀{to_float(chunk['visibility']) / 1000:.1f}km"
                 )
             )
 
         details = [
-            f"🌅 Sunrise: {day['sunrise_local']}",
-            f"🌇 Sunset: {day['sunset_local']}",
-            f"☀️ Daylight: {round(to_float(day['daylight_h']), 1)} h",
-            f"☔ Precipitation: {to_float(day['precip_sum']):.1f} mm ({to_float(day['precip_hours']):.1f} h)",
-            f"💨 Max wind: {round(to_float(day['wind_speed_max']))} km/h",
-            f"🧴 UV max: {to_float(day['uv_index_max']):.1f}",
+            (
+                f"{weather_emoji(day['weather_code'])} {weather_text(day['weather_code'])} | "
+                f"{round(to_float(day['temp_min']))}°C/{round(to_float(day['temp_max']))}°C | "
+                f"Feels {round(to_float(day['apparent_temp_min']))}°C/{round(to_float(day['apparent_temp_max']))}°C"
+            ),
+            (
+                f"🌅 {day['sunrise_local']} | 🌇 {day['sunset_local']} | "
+                f"☀️ {round(to_float(day['daylight_h']), 1)}h"
+            ),
+            (
+                f"☔ {to_float(day['precip_sum']):.1f}mm ({to_float(day['precip_hours']):.1f}h) | "
+                f"💨 {round(to_float(day['wind_speed_max']))}km/h | "
+                f"🧴 {to_float(day['uv_index_max']):.1f}"
+            ),
             f"Last update: {day['generated_local']}",
             "Forecast by Open-Meteo",
             source_url,
@@ -149,7 +192,7 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
         event.add("geo", (forecast["latitude"], forecast["longitude"]))
         event.add("dtstamp", timestamp)
         event.add("dtstart", date.fromisoformat(day["date_ical"][0:4] + "-" + day["date_ical"][4:6] + "-" + day["date_ical"][6:8]))
-        event.add("description", "\n".join([*aggregate_lines, "", *details]))
+        event.add("description", "\n".join([*details, "", *aggregate_lines]))
         event.add("location", forecast["location"])
         event.add("url", "https://open-meteo.com/")
         event.add("status", "CONFIRMED")
@@ -287,6 +330,8 @@ class OpenMeteoToICal(hass.Hass):
                     "weather_code": daily_data["weather_code"][idx],
                     "temp_min": daily_data["temperature_2m_min"][idx],
                     "temp_max": daily_data["temperature_2m_max"][idx],
+                    "apparent_temp_min": daily_data["apparent_temperature_min"][idx],
+                    "apparent_temp_max": daily_data["apparent_temperature_max"][idx],
                     "sunrise_local": sunrise.strftime("%H:%M"),
                     "sunset_local": sunset.strftime("%H:%M"),
                     "daylight_h": to_float(daily_data["daylight_duration"][idx]) / 3600,
