@@ -1,3 +1,5 @@
+## https://github.com/legeiger/openmeteo2ical
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -5,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import numpy as np
 from icalendar import Calendar, Event
 
 try:
@@ -186,7 +189,8 @@ class OpenMeteoToICal(hass.Hass):
             self.log(f"Wrote iCal forecast with {len(forecast['days'])} events to {self.output_file}")
         except Exception as exc:  # pragma: no cover
             self.error(f"openmeteo2ical update failed: {exc}")
-
+            
+            
     def fetch_forecast(self, generated_at: datetime) -> dict[str, Any]:
         import openmeteo_requests
 
@@ -208,10 +212,31 @@ class OpenMeteoToICal(hass.Hass):
         timezone = to_text(response.Timezone())
         tz = ZoneInfo(timezone)
 
+        def extract_values(var_obj) -> np.ndarray:
+            """Extract array safely from Open-Meteo FlatBuffers object."""
+            # 1. Try Int64 first (e.g. sunrise, sunset)
+            try:
+                i_vals = var_obj.ValuesInt64AsNumpy()
+                if isinstance(i_vals, np.ndarray) and i_vals.size > 0:
+                    return i_vals.flatten()
+            except Exception:
+                pass
+
+            # 2. Fall back to Float32 (e.g. temperatures, humidity, etc.)
+            try:
+                f_vals = var_obj.ValuesAsNumpy()
+                if isinstance(f_vals, np.ndarray) and f_vals.size > 0:
+                    return f_vals.flatten()
+            except Exception:
+                pass
+
+            return np.array([])
+
         hourly = response.Hourly()
         hourly_time = list(range(hourly.Time(), hourly.TimeEnd(), hourly.Interval()))
+        
         hourly_data = {
-            variable: hourly.Variables(index).ValuesAsNumpy()
+            variable: extract_values(hourly.Variables(index))
             for index, variable in enumerate(HOURLY_VARIABLES)
         }
 
@@ -237,8 +262,9 @@ class OpenMeteoToICal(hass.Hass):
 
         daily = response.Daily()
         daily_time = list(range(daily.Time(), daily.TimeEnd(), daily.Interval()))
+        
         daily_data = {
-            variable: daily.Variables(index).ValuesAsNumpy()
+            variable: extract_values(daily.Variables(index))
             for index, variable in enumerate(DAILY_VARIABLES)
         }
 
@@ -247,8 +273,13 @@ class OpenMeteoToICal(hass.Hass):
         for idx, timestamp in enumerate(daily_time):
             local_dt = datetime.fromtimestamp(timestamp, tz=UTC).astimezone(tz)
             key = local_dt.date().isoformat()
-            sunrise = datetime.fromtimestamp(daily_data["sunrise"][idx], tz=UTC).astimezone(tz)
-            sunset = datetime.fromtimestamp(daily_data["sunset"][idx], tz=UTC).astimezone(tz)
+
+            sunrise_ts = int(daily_data["sunrise"][idx])
+            sunset_ts = int(daily_data["sunset"][idx])
+
+            sunrise = datetime.fromtimestamp(sunrise_ts, tz=UTC).astimezone(tz)
+            sunset = datetime.fromtimestamp(sunset_ts, tz=UTC).astimezone(tz)
+            
             days.append(
                 {
                     "uid_prefix": uid_prefix,
@@ -276,6 +307,7 @@ class OpenMeteoToICal(hass.Hass):
             "calendar_name": self.calendar_name,
             "days": days,
         }
+        
 
     def write_output(self, content: str) -> None:
         self.output_file.parent.mkdir(parents=True, exist_ok=True)
