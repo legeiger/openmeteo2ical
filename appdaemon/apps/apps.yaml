@@ -1,4 +1,5 @@
 openmeteo2ical:
+  # https://github.com/legeiger/openmeteo2ical
   module: openmeteo2ical
   class: OpenMeteoToICal
 
@@ -10,12 +11,12 @@ openmeteo2ical:
   timezone: Europe/Berlin
 
   # Output
-  output_file: /config/www/openmeteo.ics
+  output_file: /homeassistant/www/openmeteo.ics
 
   # Refresh and time range
   interval_minutes: 60
   forecast_days: 14
-  past_days: 0
+  past_days: 1
 
   # Units
   temperature_unit: celsius
