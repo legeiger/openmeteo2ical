@@ -1,0 +1,26 @@
+openmeteo2ical:
+  module: openmeteo2ical
+  class: OpenMeteoToICal
+
+  # Location
+  latitude: 48.7424
+  longitude: 9.10785
+  location: Dachswald
+  calendar_name: Dachswald Wetter
+  timezone: Europe/Berlin
+
+  # Output
+  output_file: /config/www/openmeteo.ics
+
+  # Refresh and time range
+  interval_minutes: 60
+  forecast_days: 14
+  past_days: 0
+
+  # Units
+  temperature_unit: celsius
+  wind_speed_unit: kmh
+  precipitation_unit: mm
+
+  # Optional metadata URL shown in event description
+  source_url: https://api.open-meteo.com/v1/forecast
