@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from icalendar import Calendar, Event
+
 try:
     from appdaemon.plugins.hass import hassapi as hass
 except ImportError:  # pragma: no cover - enables local testing without AppDaemon
-    class _HassBase:  # noqa: D401
-        """Fallback base class for environments without AppDaemon."""
+    class _HassBase:
+        pass
 
     class hass:  # type: ignore
         Hass = _HassBase
@@ -23,6 +25,7 @@ HOURLY_VARIABLES = [
     "precipitation",
     "wind_speed_10m",
     "wind_direction_10m",
+    "visibility",
     "weather_code",
 ]
 
@@ -40,7 +43,7 @@ DAILY_VARIABLES = [
 ]
 
 WEATHER_EMOJI = {
-    0: "☀️",  # clear sky
+    0: "☀️",
     1: "🌤",
     2: "⛅",
     3: "☁️",
@@ -89,39 +92,16 @@ def weather_emoji(code: Any) -> str:
     return WEATHER_EMOJI.get(to_int(code), "❓")
 
 
-def escape_ical_text(text: str) -> str:
-    return (
-        text.replace("\\", "\\\\")
-        .replace(";", "\\;")
-        .replace(",", "\\,")
-        .replace("\n", "\\n")
-    )
-
-
-def fold_ical_line(line: str, limit: int = 75) -> list[str]:
-    if len(line) <= limit:
-        return [line]
-    folded: list[str] = []
-    rest = line
-    while len(rest) > limit:
-        folded.append(rest[:limit])
-        rest = f" {rest[limit:]}"
-    folded.append(rest)
-    return folded
-
-
 def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url: str) -> str:
-    timestamp = generated_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-    lines = [
-        "BEGIN:VCALENDAR",
-        "PRODID:openmeteo2ical",
-        f"X-WR-CALNAME:{escape_ical_text(forecast['calendar_name'])}",
-        f"X-WR-TIMEZONE:{escape_ical_text(forecast['timezone'])}",
-        "VERSION:2.0",
-        "CALSCALE:GREGORIAN",
-        "X-PUBLISHED-TTL:PT1H",
-        "METHOD:PUBLISH",
-    ]
+    timestamp = generated_at.astimezone(UTC)
+    calendar = Calendar()
+    calendar.add("prodid", "openmeteo2ical")
+    calendar.add("version", "2.0")
+    calendar.add("calscale", "GREGORIAN")
+    calendar.add("method", "PUBLISH")
+    calendar.add("X-WR-CALNAME", forecast["calendar_name"])
+    calendar.add("X-WR-TIMEZONE", forecast["timezone"])
+    calendar.add("X-PUBLISHED-TTL", "PT1H")
 
     for index, day in enumerate(forecast["days"]):
         summary = (
@@ -129,9 +109,9 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
             f"{round(to_float(day['temp_min']))}°C / {round(to_float(day['temp_max']))}°C"
         )
 
-        detail_lines = []
+        aggregate_lines = []
         for chunk in day["three_hour_chunks"]:
-            detail_lines.append(
+            aggregate_lines.append(
                 (
                     f"{chunk['start_h']:>2}h - {chunk['end_h']:>2}h: "
                     f"{weather_emoji(chunk['weather_code'])} "
@@ -141,52 +121,40 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
                     f"☔{round(to_float(chunk['precip_probability']))}% "
                     f"🌧{to_float(chunk['precipitation']):.1f}mm "
                     f"💨{round(to_float(chunk['wind_speed']))}km/h "
-                    f"🧭{round(to_float(chunk['wind_direction']))}°"
+                    f"🧭{round(to_float(chunk['wind_direction']))}° "
+                    f"👀{to_float(chunk['visibility']) / 1000:.1f}km"
                 )
             )
 
-        detail_lines.extend(
-            [
-                "",
-                f"🌅 Sunrise: {day['sunrise_local']}",
-                f"🌇 Sunset: {day['sunset_local']}",
-                f"☀️ Daylight: {round(to_float(day['daylight_h']), 1)} h",
-                f"☔ Precipitation: {to_float(day['precip_sum']):.1f} mm ({to_float(day['precip_hours']):.1f} h)",
-                f"💨 Max wind: {round(to_float(day['wind_speed_max']))} km/h",
-                f"🧴 UV max: {to_float(day['uv_index_max']):.1f}",
-                "",
-                f"Last update: {day['generated_local']}",
-                "",
-                "Forecast by Open-Meteo",
-                source_url,
-            ]
-        )
-
-        event_lines = [
-            "BEGIN:VEVENT",
-            f"UID:{day['uid_prefix']}-{index}@openmeteo2ical",
-            "SEQUENCE:1",
-            "CLASS:PUBLIC",
-            "CREATED:20200101T000000Z",
-            f"GEO:{forecast['latitude']};{forecast['longitude']}",
-            f"DTSTAMP:{timestamp}",
-            f"DTSTART;VALUE=DATE:{day['date_ical']}",
-            f"DESCRIPTION:{escape_ical_text('\n'.join(detail_lines))}",
-            f"LOCATION:{escape_ical_text(forecast['location'])}",
-            "URL:https://open-meteo.com/",
-            "STATUS:CONFIRMED",
-            f"SUMMARY:{escape_ical_text(summary)}",
-            "TRANSP:TRANSPARENT",
-            "END:VEVENT",
+        details = [
+            f"🌅 Sunrise: {day['sunrise_local']}",
+            f"🌇 Sunset: {day['sunset_local']}",
+            f"☀️ Daylight: {round(to_float(day['daylight_h']), 1)} h",
+            f"☔ Precipitation: {to_float(day['precip_sum']):.1f} mm ({to_float(day['precip_hours']):.1f} h)",
+            f"💨 Max wind: {round(to_float(day['wind_speed_max']))} km/h",
+            f"🧴 UV max: {to_float(day['uv_index_max']):.1f}",
+            f"Last update: {day['generated_local']}",
+            "Forecast by Open-Meteo",
+            source_url,
         ]
-        lines.extend(event_lines)
 
-    lines.append("END:VCALENDAR")
+        event = Event()
+        event.add("uid", f"{day['uid_prefix']}-{index}@openmeteo2ical")
+        event.add("sequence", 1)
+        event.add("class", "PUBLIC")
+        event.add("created", datetime(2020, 1, 1, tzinfo=UTC))
+        event.add("geo", (forecast["latitude"], forecast["longitude"]))
+        event.add("dtstamp", timestamp)
+        event.add("dtstart", date.fromisoformat(day["date_ical"][0:4] + "-" + day["date_ical"][4:6] + "-" + day["date_ical"][6:8]))
+        event.add("description", "\n".join([*aggregate_lines, "", *details]))
+        event.add("location", forecast["location"])
+        event.add("url", "https://open-meteo.com/")
+        event.add("status", "CONFIRMED")
+        event.add("summary", summary)
+        event.add("transp", "TRANSPARENT")
+        calendar.add_component(event)
 
-    output_lines: list[str] = []
-    for line in lines:
-        output_lines.extend(fold_ical_line(line))
-    return "\r\n".join(output_lines) + "\r\n"
+    return calendar.to_ical().decode("utf-8")
 
 
 class OpenMeteoToICal(hass.Hass):
@@ -216,14 +184,13 @@ class OpenMeteoToICal(hass.Hass):
             ical_text = build_calendar(forecast, generated_at, self.args.get("source_url", "https://api.open-meteo.com/v1/forecast"))
             self.write_output(ical_text)
             self.log(f"Wrote iCal forecast with {len(forecast['days'])} events to {self.output_file}")
-        except Exception as exc:  # pragma: no cover - runtime protection
+        except Exception as exc:  # pragma: no cover
             self.error(f"openmeteo2ical update failed: {exc}")
 
     def fetch_forecast(self, generated_at: datetime) -> dict[str, Any]:
         import openmeteo_requests
 
         client = openmeteo_requests.Client()
-
         params = {
             "latitude": self.latitude,
             "longitude": self.longitude,
@@ -238,7 +205,6 @@ class OpenMeteoToICal(hass.Hass):
         }
 
         response = client.weather_api("https://api.open-meteo.com/v1/forecast", params=params)[0]
-
         timezone = to_text(response.Timezone())
         tz = ZoneInfo(timezone)
 
@@ -263,6 +229,7 @@ class OpenMeteoToICal(hass.Hass):
                 "precipitation": hourly_data["precipitation"][idx],
                 "wind_speed": hourly_data["wind_speed_10m"][idx],
                 "wind_direction": hourly_data["wind_direction_10m"][idx],
+                "visibility": hourly_data["visibility"][idx],
                 "weather_code": hourly_data["weather_code"][idx],
             }
             if local_dt.hour % 3 == 0:

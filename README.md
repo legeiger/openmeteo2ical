@@ -4,13 +4,13 @@ Home Assistant AppDaemon app that converts Open-Meteo forecast data into an iCal
 
 ## Features
 - Generates an `.ics` file every hour (configurable) for up to 14 days (max 16 by API)
-- Uses `openmeteo-requests` and Open-Meteo weather codes
+- Uses `openmeteo-requests` + `icalendar` for RFC-compliant output
 - Keeps calendar format close to provider-style daily events, with richer emoji-based details
 - Configurable via `appdaemon/apps/apps.yaml`
 
 ## Install
 ```bash
-pip install openmeteo-requests
+pip install openmeteo-requests icalendar
 ```
 
 ## Configure

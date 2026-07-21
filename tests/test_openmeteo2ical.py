@@ -5,16 +5,14 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
+from icalendar import Calendar
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "appdaemon" / "apps"))
 import openmeteo2ical  # noqa: E402
 
 
 class OpenMeteo2ICalTests(unittest.TestCase):
-    def test_escape_ical_text(self) -> None:
-        value = "a,b;c\\d\nline"
-        self.assertEqual(openmeteo2ical.escape_ical_text(value), "a\\,b\\;c\\\\d\\nline")
-
-    def test_build_calendar_contains_rich_forecast_data(self) -> None:
+    def test_build_calendar_is_parseable_and_contains_visibility(self) -> None:
         forecast = {
             "latitude": 48.7424,
             "longitude": 9.10785,
@@ -48,6 +46,7 @@ class OpenMeteo2ICalTests(unittest.TestCase):
                             "precipitation": 0.0,
                             "wind_speed": 6,
                             "wind_direction": 220,
+                            "visibility": 9000,
                         }
                     ],
                 }
@@ -60,13 +59,14 @@ class OpenMeteo2ICalTests(unittest.TestCase):
             source_url="https://api.open-meteo.com/v1/forecast",
         )
 
-        unfolded = ical.replace("\r\n ", "")
+        parsed = Calendar.from_ical(ical)
+        events = [component for component in parsed.walk() if component.name == "VEVENT"]
 
-        self.assertIn("BEGIN:VCALENDAR", unfolded)
-        self.assertIn("SUMMARY:☀️ 10°C / 22°C", unfolded)
-        self.assertIn("🌅 Sunrise: 05:40", unfolded)
-        self.assertIn("Forecast by Open-Meteo", unfolded)
-        self.assertIn("END:VCALENDAR", unfolded)
+        self.assertEqual(len(events), 1)
+        description = str(events[0].get("description"))
+        self.assertIn("👀9.0km", description)
+        self.assertIn("Forecast by Open-Meteo", description)
+        self.assertLess(description.index("0h -  3h"), description.index("🌅 Sunrise"))
 
 
 if __name__ == "__main__":
