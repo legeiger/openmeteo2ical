@@ -147,7 +147,7 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
     # Main code block where data is added together
     for index, day in enumerate(forecast["days"]):
         summary = (
-            f"{weather_emoji(day['weather_code'])} "
+            f"{weather_emoji(day['weather_code'])}"
             f"{round(to_float(day['temp_min']))}°C / {round(to_float(day['temp_max']))}°C"
         )
 
@@ -155,7 +155,7 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
         for chunk in day["three_hour_chunks"]:
             aggregate_lines.append(
                 (
-                    f"{chunk['start_h']:>3}h-{chunk['end_h']:>2}h: "
+                    f"{chunk['start_h']:>2}h-{chunk['end_h']:>2}h: "
                     f"{weather_emoji(chunk['weather_code'])} "
                     f"{round(to_float(chunk['temperature']))}°C "
                     # f"💧{round(to_float(chunk['humidity']))}% "
