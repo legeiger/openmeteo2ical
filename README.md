@@ -2,6 +2,8 @@
 
 Home Assistant AppDaemon app that converts Open-Meteo forecast data into an iCal file.
 
+![Screenshot of resulting calendar entries](https://raw.githubusercontent.com/legeiger/openmeteo2ical/main/screenshot_calendar.png)
+
 ## Features
 - Generates an `.ics` file every hour (configurable) for up to 14 days (max 16 by API)
 - Uses `openmeteo-requests` + `icalendar` for RFC-compliant output
