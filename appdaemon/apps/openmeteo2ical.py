@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import numpy as np
+import numpy as np 
 from icalendar import Calendar, Event
 
 try:
@@ -41,6 +41,7 @@ DAILY_VARIABLES = [
     "sunrise",
     "sunset",
     "daylight_duration",
+    "sunshine_duration",
     "precipitation_sum",
     "precipitation_hours",
     "wind_speed_10m_max",
@@ -143,24 +144,37 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
     calendar.add("X-WR-TIMEZONE", forecast["timezone"])
     calendar.add("X-PUBLISHED-TTL", "PT1H")
 
+    # Main code block where data is added together
     for index, day in enumerate(forecast["days"]):
         summary = (
             f"{weather_emoji(day['weather_code'])} "
-            f"{round(to_float(day['temp_min']))}°C / {round(to_float(day['temp_max']))}°C"
+            f"{round(to_float(day['temp_min']))}°C / {round(to_float(day['temp_max']))}°C"
         )
 
         aggregate_lines = []
         for chunk in day["three_hour_chunks"]:
             aggregate_lines.append(
                 (
-                    f"{chunk['start_h']:>2}h-{chunk['end_h']:>2}h: "
+                    f"{chunk['start_h']:>3}h-{chunk['end_h']:>2}h: "
                     f"{weather_emoji(chunk['weather_code'])} "
                     f"{round(to_float(chunk['temperature']))}°C "
-                    f"💧{round(to_float(chunk['humidity']))}% "
+                    # f"💧{round(to_float(chunk['humidity']))}% "
                     f"☔{round(to_float(chunk['precip_probability']))}% "
-                    f"🌧{to_float(chunk['precipitation']):.1f}mm "
+                    f"💧{to_float(chunk['precipitation']):.1f}mm "
                     f"💨{round(to_float(chunk['wind_speed']))}km/h "
-                    f"👀{to_float(chunk['visibility']) / 1000:.1f}km"
+                    f"👀{to_float(chunk['visibility']) / 1000:.0f}km"
+                )
+            )
+            
+        aggregate_lines.append(
+                (
+                    f"updated: {day['generated_local']} {forecast["timezone"]}"
+                )
+            )
+        # attribution
+        aggregate_lines.append(
+                (
+                    f"weather data by Open-Meteo.com (CC BY 4.0)"
                 )
             )
 
@@ -171,17 +185,14 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
                 f"Feels {round(to_float(day['apparent_temp_min']))}°C/{round(to_float(day['apparent_temp_max']))}°C"
             ),
             (
-                f"🌅 {day['sunrise_local']} | 🌇 {day['sunset_local']} | "
-                f"☀️ {round(to_float(day['daylight_h']), 1)}h"
+                f"🌅 {day['sunrise_local']} 🌃 {day['sunset_local']} | "
+                f"{round(to_float(day['daylight_h']), 1)}h 🌞 {round(to_float(day['sunshine_h']), 1)}h "
             ),
             (
                 f"☔ {to_float(day['precip_sum']):.1f}mm ({to_float(day['precip_hours']):.1f}h) | "
                 f"💨 {round(to_float(day['wind_speed_max']))}km/h | "
-                f"🧴 {to_float(day['uv_index_max']):.1f}"
-            ),
-            f"Last update: {day['generated_local']}",
-            "Forecast by Open-Meteo",
-            source_url,
+                f"UV {to_float(day['uv_index_max']):.1f}"
+            )
         ]
 
         event = Event()
@@ -335,6 +346,7 @@ class OpenMeteoToICal(hass.Hass):
                     "sunrise_local": sunrise.strftime("%H:%M"),
                     "sunset_local": sunset.strftime("%H:%M"),
                     "daylight_h": to_float(daily_data["daylight_duration"][idx]) / 3600,
+                    "sunshine_h": to_float(daily_data["sunshine_duration"][idx]) / 3600,
                     "precip_sum": daily_data["precipitation_sum"][idx],
                     "precip_hours": daily_data["precipitation_hours"][idx],
                     "wind_speed_max": daily_data["wind_speed_10m_max"][idx],
