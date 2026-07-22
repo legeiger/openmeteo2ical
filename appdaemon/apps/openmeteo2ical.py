@@ -143,6 +143,12 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
     calendar.add("X-WR-CALNAME", forecast["calendar_name"])
     calendar.add("X-WR-TIMEZONE", forecast["timezone"])
     calendar.add("X-PUBLISHED-TTL", "PT1H")
+    
+    # Convert IANA timezone (e.g., "Europe/Berlin") to abbreviation (e.g., "CEST" / "CET")
+    tz_name = (
+        datetime.now(ZoneInfo(forecast["timezone"]))
+        .tzname()
+    )
 
     # Main code block where data is added together
     for index, day in enumerate(forecast["days"]):
@@ -150,33 +156,28 @@ def build_calendar(forecast: dict[str, Any], generated_at: datetime, source_url:
             f"{weather_emoji(day['weather_code'])}"
             f"{round(to_float(day['temp_min']))}°C / {round(to_float(day['temp_max']))}°C"
         )
-
+        
         aggregate_lines = []
         for chunk in day["three_hour_chunks"]:
+            # Zero-padded hours ensure fixed width in all fonts without extra bytes
+            start_h_str = f"{chunk['start_h']:02d}"
+            end_h_str = f"{chunk['end_h']:02d}"
+
             aggregate_lines.append(
-                (
-                    f"{chunk['start_h']:>2}h-{chunk['end_h']:>2}h: "
-                    f"{weather_emoji(chunk['weather_code'])} "
-                    f"{round(to_float(chunk['temperature']))}°C "
-                    # f"💧{round(to_float(chunk['humidity']))}% "
-                    f"☔{round(to_float(chunk['precip_probability']))}% "
-                    f"💧{to_float(chunk['precipitation']):.1f}mm "
-                    f"💨{round(to_float(chunk['wind_speed']))}km/h "
-                    f"👀{to_float(chunk['visibility']) / 1000:.0f}km"
-                )
+                f"{start_h_str}h-{end_h_str}h "
+                f"{weather_emoji(chunk['weather_code'])} "
+                f"{round(to_float(chunk['temperature'])):>2}°C "
+                f"☔{round(to_float(chunk['precip_probability'])):>2}% "
+                f"💧{to_float(chunk['precipitation']):.1f}mm "
+                f"💨{round(to_float(chunk['wind_speed'])):>2}km/h "
+                f"👀{to_float(chunk['visibility']) / 1000:.0f}km"
             )
+
+        # Empty line before metadata block
+        aggregate_lines.append("")
+        aggregate_lines.append(f"updated: {day['generated_local']} {tz_name}")
+        aggregate_lines.append("weather data by Open-Meteo.com (CC BY 4.0)")
             
-        aggregate_lines.append(
-                (
-                    f"updated: {day['generated_local']} {forecast["timezone"]}"
-                )
-            )
-        # attribution
-        aggregate_lines.append(
-                (
-                    f"weather data by Open-Meteo.com (CC BY 4.0)"
-                )
-            )
 
         details = [
             (
